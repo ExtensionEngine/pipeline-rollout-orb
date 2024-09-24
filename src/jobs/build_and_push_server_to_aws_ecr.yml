@@ -1,0 +1,61 @@
+description: >
+  Build Docker image of your server and push it to the AWS ECR. Enforces OIDC ideneity tokens to
+  authenitcate the job with AWS. Utilizes `aws-ecr` and `aws-cli` orbs under the to do the heavy lifting.
+
+parameters:
+  path_to_dockerfile:
+    type: string
+    default: '.'
+    description: The path to the directory containing Dockerfile.
+  path_to_build_dir:
+    type: string
+    default: '.'
+    description: The path to the directory containing the build context.
+  tag:
+    type: string
+    default: ${CIRCLE_SHA1},latest
+    description: The list of Docker image tags, comma separated, to build and push to AWS ECR.
+  extra_build_args:
+    type: string
+    default: ''
+    description: Extra arguments to pass to the Docker build command.
+  repo_name:
+    type: string
+    description: The name of the target AWS ECR repo. Created if it does not exist.
+  account_id:
+    type: string
+    default: ${AWS_ACCOUNT_ID}
+    description: The ID of the associated AWS account.
+  role_arn:
+    type: string
+    default: ${AWS_ROLE_ARN}
+    description: The ARN of the role that the job will assume.
+  region:
+    type: string
+    default: ${AWS_DEFAULT_REGION}
+    description: The target AWS region.
+  after_checkout:
+    type: steps
+    default:
+      - run: echo "No after checkout steps defined"
+    description: The list of steps to execute after code checkout.
+
+executor: aws-ecr/default
+
+steps:
+  - checkout
+  - steps: <<parameters.after_checkout>>
+  - aws-ecr/build_and_push_image:
+      account_id: <<parameters.account_id>>
+      auth:
+        - aws-cli/setup:
+            aws_access_key_id: ''
+            aws_secret_access_key: ''
+            role_arn: <<parameters.role_arn>>
+            region: <<parameters.region>>
+      create_repo: true
+      repo: <<parameters.repo_name>>
+      path: <<parameters.path_to_dockerfile>>
+      build_path: <<parameters.path_to_build_dir>>
+      tag: <<parameters.tag>>
+      extra_build_args: <<parameters.extra_build_args>>
