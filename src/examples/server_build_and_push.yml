@@ -1,0 +1,17 @@
+description: |
+  The "build_and_push_server_to_aws_ecr" job builds a Docker image, authenticates the job
+  with AWS using OIDC identity tokens, and pushes the image to ECR.
+  By default, the SHA1 hash of the commit and the "latest" string are used as a tag for
+  the image, while the AWS account, role, and region are sourced from the environment.
+
+usage:
+  version: 2.1
+  orbs:
+    rollout: studion/rollout@x.y.z
+  workflows:
+    build_and_push_server:
+      jobs:
+        - rollout/build_and_push_server_to_aws_ecr:
+            path_to_dockerfile: ~/app
+            path_to_build_dir: ~/app/src
+            repo_name: my-app
