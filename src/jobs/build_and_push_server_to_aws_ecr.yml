@@ -1,27 +1,39 @@
 description: >
-  Build Docker image of your server and push it to the AWS ECR. Enforces OIDC ideneity tokens to
-  authenitcate the job with AWS. Utilizes `aws-ecr` and `aws-cli` orbs under the to do the heavy lifting.
+  Build a Docker image and securely push it to AWS ECR using OIDC authentication.
+  Out-of-the-box comprehensive security scanning with controls for code analysis,
+  vulnerability detection, and compliance checks.
+  Built on `circleci/aws-ecr`, `circleci/aws-cli`, `circleci/node`, and
+  `studion/security` orbs.
 
 parameters:
-  path_to_dockerfile:
+  dockerfile_dir:
     type: string
-    default: '.'
-    description: The path to the directory containing Dockerfile.
-  path_to_build_dir:
+    default: "."
+    description: >
+      The path to the directory containing the Dockerfile. Used as the scanning
+      target for Dockerfile misconfiguration scanning.
+  build_dir:
     type: string
-    default: '.'
-    description: The path to the directory containing the build context.
-  tag:
+    default: "."
+    description: >
+      The path to the directory containing the build context. All security scans
+      for code and dependencies use this as the root directory.
+  build_args:
+    type: string
+    default: ""
+    description: >
+      Additional arguments to pass to the Docker build command. For multi-line
+      arguments use Folded Block Style (build_args: >-).
+  tags:
     type: string
     default: ${CIRCLE_SHA1},latest
-    description: The list of Docker image tags, comma separated, to build and push to AWS ECR.
-  extra_build_args:
-    type: string
-    default: ''
-    description: Extra arguments to pass to the Docker build command.
+    description: >
+      Comma delimited list of tags to apply to the built image. By default,
+      the SHA1 hash of the last commit and "latest".
   repo_name:
     type: string
-    description: The name of the target AWS ECR repo. Created if it does not exist.
+    description: >
+      The name of the target AWS ECR repository. Created if it does not exist.
   account_id:
     type: string
     default: ${AWS_ACCOUNT_ID}
@@ -29,33 +41,134 @@ parameters:
   role_arn:
     type: string
     default: ${AWS_ROLE_ARN}
-    description: The ARN of the role that the job will assume.
+    description: The ARN of the IAM role that the job will assume.
   region:
     type: string
     default: ${AWS_DEFAULT_REGION}
     description: The target AWS region.
+  security:
+    type: enum
+    enum:
+      - setup
+      - setup_and_run_all
+      - setup_and_run_app_scan
+      - setup_and_run_img_scan
+      - setup_and_run_sbom_tool
+      - skip
+    default: setup_and_run_all
+    description: |
+      Choose one of the available security configurations to run:
+      • `setup`: Install security tools only, no scans
+      • `setup_and_run_all`: Full security suite, code scan, image scan, and SBOM generation
+      • `setup_and_run_app_scan`: Code-only security checks, secrets, vulnerabilities, and misconfigurations
+      • `setup_and_run_img_scan`: Image-only security checks, vulnerabilities and secrets in built image
+      • `setup_and_run_sbom_tool`: Generate Software Bill of Materials (SBOM) only
+      • `skip`: Disable all security features
+      Note: Available security configurations are opinionated and non-customizable.
+      For custom security workflows, use `setup` or `skip` and implement in hooks (e.g. `before_build`).
   after_checkout:
     type: steps
     default:
-      - run: echo "No after checkout steps defined"
-    description: The list of steps to execute after code checkout.
+      - run: echo "No after checkout steps provided"
+    description: >
+      The list of steps to execute after code checkout. Runs before
+      any out-of-the-box security feature.
+  before_build:
+    type: steps
+    default:
+      - run: echo "No before build steps provided"
+    description: >
+      The list of steps to execute before Docker image build. Runs after
+      out-of-the-box security tools installation and code scanning, if enabled.
+  before_push:
+    type: steps
+    default:
+      - run: echo "No before push steps provided"
+    description: >
+      The list of steps to execute before pushing image to ECR. Runs after
+      out-of-the-box image scanning and SBOM generation.
 
 executor: aws-ecr/default
 
 steps:
   - checkout
+  - node/install
   - steps: <<parameters.after_checkout>>
-  - aws-ecr/build_and_push_image:
+  - when:
+      condition:
+        matches:
+          pattern: ^setup[_a-z]*$
+          value: <<parameters.security>>
+      steps:
+        - security/install_gitleaks
+        - security/install_grype
+        - security/install_semgrep
+        - security/install_syft
+        - security/install_trivy
+  - when:
+      condition:
+        matches:
+          pattern: ^setup_and_run_(all|app_scan)$
+          value: <<parameters.security>>
+      steps:
+        - security/detect_secrets:
+            mode: dir
+            source: <<parameters.build_dir>>
+        - security/analyze_code:
+            full_scan: true
+        - security/scan_dependencies:
+            pkg_json_dir: <<parameters.build_dir>>
+        - security/scan_dockerfile:
+            dockerfile_dir: <<parameters.dockerfile_dir>>
+  - steps: <<parameters.before_build>>
+  - aws-cli/setup:
+      aws_access_key_id: ""
+      aws_secret_access_key: ""
+      role_arn: <<parameters.role_arn>>
+      region: <<parameters.region>>
+  - aws-ecr/ecr_login:
       account_id: <<parameters.account_id>>
-      auth:
-        - aws-cli/setup:
-            aws_access_key_id: ''
-            aws_secret_access_key: ''
-            role_arn: <<parameters.role_arn>>
-            region: <<parameters.region>>
-      create_repo: true
+      region: <<parameters.region>>
+  - aws-ecr/build_image:
+      push_image: false
+      account_id: <<parameters.account_id>>
+      region: <<parameters.region>>
       repo: <<parameters.repo_name>>
-      path: <<parameters.path_to_dockerfile>>
-      build_path: <<parameters.path_to_build_dir>>
-      tag: <<parameters.tag>>
-      extra_build_args: <<parameters.extra_build_args>>
+      path: <<parameters.dockerfile_dir>>
+      build_path: <<parameters.build_dir>>
+      tag: <<parameters.tags>>
+      extra_build_args: <<parameters.build_args>>
+  - run:
+      name: Export build image name with tag
+      environment:
+        PARAM_STR_ACCOUNT_ID: <<parameters.account_id>>
+        PARAM_STR_REGION: <<parameters.region>>
+        PARAM_STR_REPO_NAME: <<parameters.repo_name>>
+        PARAM_STR_TAGS: <<parameters.tags>>
+      command: <<include(scripts/export-build-image.sh)>>
+  - when:
+      condition:
+        matches:
+          pattern: ^setup_and_run_(all|img_scan)$
+          value: <<parameters.security>>
+      steps:
+        - security/assess_image:
+            image: ${BUILD_IMAGE_NAME_WITH_TAG}
+            severity: critical
+  - when:
+      condition:
+        matches:
+          pattern: ^setup_and_run_(all|sbom_tool)$
+          value: <<parameters.security>>
+      steps:
+        - security/generate_sbom:
+            image: ${BUILD_IMAGE_NAME_WITH_TAG}
+  - steps: <<parameters.before_push>>
+  - aws-ecr/create_repo:
+      region: <<parameters.region>>
+      repo: <<parameters.repo_name>>
+  - aws-ecr/push_image:
+      account_id: <<parameters.account_id>>
+      region: <<parameters.region>>
+      repo: <<parameters.repo_name>>
+      tag: <<parameters.tags>>

@@ -18,8 +18,8 @@ workflows:
     jobs:
       - rollout/build_and_push_server_to_aws_ecr:
           name: build_and_push_server_to_aws_ecr
-          path_to_dockerfile: ~/project/sample
-          path_to_build_dir: ~/project/sample
+          dockerfile_dir: ~/project/sample
+          build_dir: ~/project/sample
           repo_name: rollout-sample
           filters: *filters
       - orb-tools/pack:
@@ -30,5 +30,6 @@ workflows:
           pub_type: production
           requires:
             - orb-tools/pack
+            - build_and_push_server_to_aws_ecr
           context: orb-publishing
           filters: *release-filters

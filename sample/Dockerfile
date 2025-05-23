@@ -1,7 +1,6 @@
 FROM node:24.2.0-bookworm-slim@sha256:b30c143a092c7dced8e17ad67a8783c03234d4844ee84c39090c9780491aaf89 as base
 
 RUN apt-get update && apt-get install -y --no-install-recommends dumb-init
-ENTRYPOINT ["dumb-init", "--"]
 
 ###
 
@@ -45,4 +44,5 @@ FROM configure AS run
 
 ENV NODE_ENV production
 USER node
+ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/main.js"]
