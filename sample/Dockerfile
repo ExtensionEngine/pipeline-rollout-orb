@@ -1,11 +1,11 @@
-FROM node:20.17-bookworm-slim@sha256:df85129996d6b7a4ec702ebf2142cfa683f28b1d33446faec12168d122d3410d as base
+FROM node:24.2.0-bookworm-slim@sha256:b30c143a092c7dced8e17ad67a8783c03234d4844ee84c39090c9780491aaf89 as base
 
 RUN apt-get update && apt-get install -y --no-install-recommends dumb-init
 ENTRYPOINT ["dumb-init", "--"]
 
 ###
 
-FROM node:20.17-bookworm-slim@sha256:48db4f6ea21d134be744207225753a1730c4bc1b4cdf836d44511c36bf0e34d7 as install
+FROM node:24.2.0-bookworm@sha256:d1db2ecd11f417ab2ff4fef891b4d27194c367d101f9b9cd546a26e424e93d31 as install
 
 WORKDIR /usr/src/app
 
@@ -45,4 +45,4 @@ FROM configure AS run
 
 ENV NODE_ENV production
 USER node
-CMD [ "node", "dist/main.js" ]
+CMD ["node", "dist/main.js"]
