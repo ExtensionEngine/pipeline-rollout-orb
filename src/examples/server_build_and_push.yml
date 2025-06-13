@@ -1,7 +1,9 @@
 description: |
   The "build_and_push_server_to_aws_ecr" job builds a Docker image, authenticates the job
-  with AWS using OIDC identity tokens, and pushes the image to ECR.
-  By default, the SHA1 hash of the commit and the "latest" string are used as a tag for
+  with AWS using OIDC identity tokens, and pushes the image to ECR. As a part of this process,
+  various out-of-the-box security controls are executed against code, dependencies and image.
+  In the end, Software Bill of Materials (SBOM) is generated.
+  By default, the SHA1 hash of the latest commit and the "latest" string are used as a tag for
   the image, while the AWS account, role, and region are sourced from the environment.
 
 usage:
