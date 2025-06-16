@@ -1,0 +1,41 @@
+description: |
+  The available security configurations may not suite every project due to their
+  opinionated nature. In such cases, it is easy to bypass them and provide custom
+  security configurations.
+  Custom security configurations need to be implemented as series of steps at
+  specific points, (a) after code checkout - "after_checkout", (b) before Docker
+  image build - "before_build", and (c) before image push to ECR - "before_push".
+
+usage:
+  version: 2.1
+  orbs:
+    rollout: studion/rollout@x.y.z
+    security: studion/security@x.y.z
+  workflows:
+    build_and_push_server:
+      jobs:
+        - rollout/build_and_push_server_to_aws_ecr:
+            path_to_dockerfile: ~/app
+            path_to_build_dir: ~/app/src
+            repo_name: my-app
+            security: setup
+            before_build:
+              - security/detect_secrets:
+                  source: ~/app
+                  mode: dir
+              - security/analyze_code:
+                  full_scan: true
+                  verbose: true
+              - security/scan_dependencies:
+                  scan_command: npm audit --audit-level=critical --omit=dev
+              - security/scan_dockerfile:
+                  dockerfile_dir: ~/app
+                  severity: CRITICAL
+            before_push:
+              - security/assess_image:
+                  image: ${BUILD_IMAGE_NAME_WITH_TAG}
+                  scanners: vuln
+                  severity: critical
+              - security/generate_sbom:
+                  image: ${BUILD_IMAGE_NAME_WITH_TAG}
+                  exclude: /etc /usr
