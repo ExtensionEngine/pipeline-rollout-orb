@@ -116,6 +116,7 @@ steps:
             source: <<parameters.build_dir>>
         - security/analyze_code:
             full_scan: true
+            root_dir: <<parameters.build_dir>>
         - security/scan_dependencies:
             pkg_json_dir: <<parameters.build_dir>>
         - security/scan_dockerfile:
